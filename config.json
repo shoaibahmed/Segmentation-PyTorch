@@ -42,5 +42,10 @@
   "table_str":
   {
     "data_path": "/netscratch/siddiqui/TableDetection/icdar_str_devkit/data/"
+  },
+
+  "table_str_two_heads":
+  {
+    "data_path": "/netscratch/siddiqui/TableDetection/icdar_str_devkit/data/"
   }
 }

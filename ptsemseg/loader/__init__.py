@@ -8,6 +8,7 @@ from ptsemseg.loader.cityscapes_loader import cityscapesLoader
 from ptsemseg.loader.nyuv2_loader import NYUv2Loader
 from ptsemseg.loader.sunrgbd_loader import SUNRGBDLoader
 from ptsemseg.loader.table_str_loader import TableStrLoader
+from ptsemseg.loader.table_str_loader_two_heads import TableStrLoaderTwoHeads
 
 
 def get_loader(name):
@@ -24,6 +25,7 @@ def get_loader(name):
         'nyuv2': NYUv2Loader,
         'sunrgbd': SUNRGBDLoader,
         'table_str': TableStrLoader,
+        'table_str_two_heads': TableStrLoaderTwoHeads,
     }[name]
 
 

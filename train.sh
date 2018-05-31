@@ -6,4 +6,5 @@ export PATH=/home/siddiqui/anaconda3/bin/:$PATH
 cd /netscratch/siddiqui/Repositories/Segmentation-PyTorch/
 
 echo "Training FCN on ICDAR-13 Structure Recognition"
-python train.py --arch fcn8s --dataset table_str
+# python train_str.py --dataset table_str
+python train_str.py --dataset table_str_two_heads --img_rows 256 --img_cols 2048

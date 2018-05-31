@@ -11,6 +11,9 @@ import glob
 
 from tqdm import tqdm
 from torch.utils import data
+import cv2
+
+ASPECT_AWARE_SCALING = True
 
 def get_data_path(name):
     """Extract path to data from config file.
@@ -25,7 +28,7 @@ def get_data_path(name):
     data = json.loads(js)
     return os.path.expanduser(data[name]['data_path'])
 
-class TableStrLoader(data.Dataset):
+class TableStrLoaderTwoHeads(data.Dataset):
     """Data loader for the Table Structure Recognition dataset.
 
     Annotations from both the original VOC data (which consist of RGB images
@@ -57,7 +60,7 @@ class TableStrLoader(data.Dataset):
         self.is_transform = is_transform
         self.augmentations = augmentations
         self.img_norm = img_norm
-        self.n_classes = 2
+        self.n_classes = 3
         self.mean = np.array([104.00699, 116.66877, 122.67892])
         self.files = collections.defaultdict(list)
         self.img_size = img_size if isinstance(img_size, tuple) \
@@ -78,26 +81,42 @@ class TableStrLoader(data.Dataset):
         im_path = pjoin(self.root, 'Images',  im_name + '.jpg')
         lbl_path_row = pjoin(self.root, 'pre_encoded', im_name + '-row.png')
         lbl_path_col = pjoin(self.root, 'pre_encoded', im_name + '-column.png')
-        im = m.imread(im_path)
+        im = cv2.imread(im_path)
         im = np.array(im, dtype=np.uint8)
-        lbl_row = m.imread(lbl_path_row)
-        lbl_row = np.array(lbl_row, dtype=np.int8)
-        lbl_col = m.imread(lbl_path_col)
-        lbl_col = np.array(lbl_col, dtype=np.int8)
-        lbl = np.stack((lbl_row, lbl_col), axis=2)
+        lbl_row = cv2.imread(lbl_path_row, cv2.IMREAD_GRAYSCALE)
+        lbl_row = np.array(lbl_row, dtype=np.uint8)
+        lbl_col = m.imread(lbl_path_col, cv2.IMREAD_GRAYSCALE)
+        lbl_col = np.array(lbl_col, dtype=np.uint8)
+        lbl = np.zeros((lbl_row.shape[0], lbl_row.shape[1]), dtype=lbl_row.dtype)
+        lbl = np.stack((lbl_row, lbl_col, lbl), axis=2)
+        # print ("Before:", im.shape, lbl.shape)
 
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
         if self.is_transform:
             im, lbl = self.transform(im, lbl)
-        print (im.size(), lbl.size())
+        lbl = lbl[:-1, :, :] # Discard the 3rd dimension
+        # print ("Data shape:", im.size(), lbl.size())
         return im, lbl
 
 
     def transform(self, img, lbl):
         if self.img_size is not None:
-            img = m.imresize(img, (self.img_size[0], self.img_size[1])) # uint8 with RGB mode
-        img = img[:, :, ::-1] # RGB -> BGR
+            if ASPECT_AWARE_SCALING:
+                target_size = self.img_size[0]
+                max_size = self.img_size[1]
+                im_shape = img.shape
+                im_size_min = np.min(im_shape[0:2])
+                im_size_max = np.max(im_shape[0:2])
+                im_scale = float(target_size) / float(im_size_min)
+                # Prevent the biggest axis from being more than MAX_SIZE
+                if np.round(im_scale * im_size_max) > max_size:
+                    im_scale = float(max_size) / float(im_size_max)
+                img = cv2.resize(img, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_LINEAR)
+            else:
+                # img = m.imresize(img, (self.img_size[0], self.img_size[1])) # uint8 with RGB mode
+                img = cv2.resize(img, (self.img_size[0], self.img_size[1]), interpolation=cv2.INTER_NEAREST) # uint8 with RGB mode
+        # img = img[:, :, ::-1] # RGB -> BGR
         img = img.astype(np.float64)
         img -= self.mean
         if self.img_norm:
@@ -109,9 +128,17 @@ class TableStrLoader(data.Dataset):
 
         lbl[lbl==255] = 0
         lbl = lbl.astype(float)
+        # print ("Before:", np.unique(lbl))
         if self.img_size is not None:
-            lbl = m.imresize(lbl, (self.img_size[0], self.img_size[1]), 'nearest', mode='F')
+            if ASPECT_AWARE_SCALING:
+                lbl = cv2.resize(lbl, None, None, fx=im_scale, fy=im_scale, interpolation=cv2.INTER_NEAREST)
+            else:
+                # lbl = m.imresize(lbl, (self.img_size[0], self.img_size[1]), 'nearest', 'F')
+                lbl = cv2.resize(lbl, (self.img_size[0], self.img_size[1]), interpolation=cv2.INTER_NEAREST) # uint8 with RGB mode
         lbl = lbl.astype(int)
+        # NHWC -> NCHW
+        lbl = lbl.transpose(2, 0, 1)
+        # print (np.unique(lbl))
         img = torch.from_numpy(img).float()
         lbl = torch.from_numpy(lbl).long()
         return img, lbl
@@ -125,7 +152,7 @@ class TableStrLoader(data.Dataset):
         """
         # CLASS_MASK = {(0, 0, 0): 0, (0, 128, 0): 128, (0, 0, 128): 128, (192, 224, 224): 255}
         colors = np.asarray([[0,0,0], [0,128,0], [128,0,0], [224,224,192]])
-        labels = np.asarray([0, 1, 1, 250])
+        labels = np.asarray([0, 1, 1, 2]) # Give even high weight to the boundary
         # labels = np.asarray([0, 128, 128, 255])
         return zip(colors, labels)
 
