@@ -221,7 +221,6 @@ class TableStrLoaderTwoHeads(data.Dataset):
         sbd_path = get_data_path('table_str')
         target_path = pjoin(self.root, 'pre_encoded')
         if not os.path.exists(target_path): os.makedirs(target_path) 
-        print ("Using directory: %s" % target_path)
         # path = pjoin(sbd_path, 'dataset/train.txt')
         # sbd_train_list = tuple(open(path, 'r'))
         # sbd_train_list = [id_.rstrip() for id_ in sbd_train_list]
