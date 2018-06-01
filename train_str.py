@@ -62,6 +62,7 @@ def train(args):
         optimizer = model.module.optimizer
     else:
         optimizer = torch.optim.SGD(model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10)
 
     if hasattr(model.module, 'loss'):
         print('Using custom loss')
@@ -82,6 +83,9 @@ def train(args):
 
     best_iou_first_head = -100.0 
     best_iou_second_head = -100.0 
+    class_weights = torch.ones(n_classes).cuda()
+    class_weights[-1] *= 3.0 # Distinguishing the border is the most important task
+    print ("Class weights:", class_weights)
     for epoch in range(args.n_epoch):
         model.train()
         for i, (images, labels) in enumerate(trainloader):
@@ -91,8 +95,8 @@ def train(args):
             optimizer.zero_grad()
             output_first_head, output_second_head = model(images)
 
-            loss_row = loss_fn(input=output_first_head, target=labels[:, 0, :, :])
-            loss_col = loss_fn(input=output_second_head, target=labels[:, 1, :, :])
+            loss_row = loss_fn(input=output_first_head, target=labels[:, 0, :, :], weight=class_weights)
+            loss_col = loss_fn(input=output_second_head, target=labels[:, 1, :, :], weight=class_weights)
             loss = loss_row + loss_col
 
             loss.backward()
@@ -109,19 +113,35 @@ def train(args):
                 print("Epoch [%d/%d] Loss: %.4f" % (epoch+1, args.n_epoch, loss.item()))
 
         model.eval()
+        avg_loss_val = 0.0
+        num_iter = 0
         for i_val, (images_val, labels_val) in tqdm(enumerate(valloader)):
-            images_val = Variable(images_val.cuda(), volatile=True)
-            labels_val = Variable(labels_val.cuda(), volatile=True)
+            with torch.no_grad():
+                images_val = Variable(images_val.cuda())
+                labels_val = Variable(labels_val.cuda())
 
-            # outputs = model(images_val)
-            output_first_head, output_second_head = model(images_val)
-            pred_first_head = output_first_head.data.max(1)[1].cpu().numpy()
-            pred_second_head = output_second_head.data.max(1)[1].cpu().numpy()
-            gt = labels_val.data.cpu().numpy()
-            gt_first_head = gt[:, 0, :, :]
-            gt_second_head = gt[:, 1, :, :]
-            running_metrics_first_head.update(gt_first_head, pred_first_head)
-            running_metrics_second_head.update(gt_second_head, pred_second_head)
+                # outputs = model(images_val)
+                output_first_head, output_second_head = model(images_val)
+                pred_first_head = output_first_head.data.max(1)[1].cpu().numpy()
+                pred_second_head = output_second_head.data.max(1)[1].cpu().numpy()
+                gt = labels_val.data.cpu().numpy()
+                gt_first_head = gt[:, 0, :, :]
+                gt_second_head = gt[:, 1, :, :]
+                running_metrics_first_head.update(gt_first_head, pred_first_head)
+                running_metrics_second_head.update(gt_second_head, pred_second_head)
+
+                # Compute loss on the validation set
+                loss_row = loss_fn(input=output_first_head, target=labels_val[:, 0, :, :], weight=class_weights)
+                loss_col = loss_fn(input=output_second_head, target=labels_val[:, 1, :, :], weight=class_weights)
+                loss_val = loss_row + loss_col
+
+                avg_loss_val += loss_val.item()
+                num_iter += 1
+        
+        # Update the learning rate
+        avg_loss_val = avg_loss_val / num_iter
+        print ("Average validation loss: %.4f" % (avg_loss_val))
+        scheduler.step(loss_val)
 
         score_first_head, class_iou_first_head = running_metrics_first_head.get_scores()
         score_second_head, class_iou_second_head = running_metrics_second_head.get_scores()
