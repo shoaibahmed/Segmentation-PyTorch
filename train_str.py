@@ -20,9 +20,9 @@ from ptsemseg.augmentations import *
 def train(args):
 
     # Setup Augmentations
-    # data_aug= Compose([RandomRotate(10),                                        
-    #                    RandomHorizontallyFlip()])
-    data_aug = None
+    data_aug= Compose([RandomRotate(10),                                        
+                       RandomHorizontallyFlip()])
+    # data_aug = None
 
     # Setup Dataloader
     data_loader = get_loader(args.dataset)
@@ -62,7 +62,7 @@ def train(args):
         optimizer = model.module.optimizer
     else:
         optimizer = torch.optim.SGD(model.parameters(), lr=args.l_rate, momentum=0.99, weight_decay=5e-4)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=10)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20)
 
     if hasattr(model.module, 'loss'):
         print('Using custom loss')
@@ -84,7 +84,7 @@ def train(args):
     best_iou_first_head = -100.0 
     best_iou_second_head = -100.0 
     class_weights = torch.ones(n_classes).cuda()
-    class_weights[-1] *= 3.0 # Distinguishing the border is the most important task
+    class_weights[-1] *= 5.0 # Distinguishing the border is the most important task
     print ("Class weights:", class_weights)
     for epoch in range(args.n_epoch):
         model.train()
@@ -141,7 +141,7 @@ def train(args):
         # Update the learning rate
         avg_loss_val = avg_loss_val / num_iter
         print ("Average validation loss: %.4f" % (avg_loss_val))
-        scheduler.step(loss_val)
+        scheduler.step(avg_loss_val)
 
         score_first_head, class_iou_first_head = running_metrics_first_head.get_scores()
         score_second_head, class_iou_second_head = running_metrics_second_head.get_scores()
@@ -198,5 +198,4 @@ if __name__ == '__main__':
     parser.set_defaults(visdom=False)
 
     args = parser.parse_args()
-    args.arch = 'segnet_two_heads'
     train(args)

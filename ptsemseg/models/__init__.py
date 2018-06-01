@@ -5,6 +5,7 @@ from ptsemseg.models.segnet import *
 from ptsemseg.models.segnet_two_heads import *
 from ptsemseg.models.unet import *
 from ptsemseg.models.pspnet import *
+from ptsemseg.models.pspnet_two_heads import *
 from ptsemseg.models.icnet import *
 from ptsemseg.models.linknet import *
 from ptsemseg.models.frrn import *
@@ -42,6 +43,9 @@ def get_model(name, n_classes, version=None):
     elif name == 'pspnet':
         model = model(n_classes=n_classes, version=version)
 
+    elif name == 'pspnet_two_heads':
+        model = model(n_classes=n_classes, version=version)
+
     elif name == 'icnet':
         model = model(n_classes=n_classes, with_bn=False, version=version)
     elif name == 'icnetBN':
@@ -62,6 +66,7 @@ def _get_model_instance(name):
             'segnet': segnet,
             'segnet_two_heads': segnet_two_heads,
             'pspnet': pspnet,
+            'pspnet_two_heads': pspnet_two_heads,
 			'icnet': icnet,
 			'icnetBN': icnet,
             'linknet': linknet,
