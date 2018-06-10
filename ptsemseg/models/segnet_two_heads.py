@@ -16,12 +16,16 @@ class segnet_two_heads(nn.Module):
         self.down4 = segnetDown3(256, 512)
         self.down5 = segnetDown3(512, 512)
 
-        self.up5 = segnetUp3(512, 512)
+        # self.up5 = segnetUp3(512, 512)
+        self.up5 = deform_segnetUp3(512, 512)
         self.up4 = segnetUp3(512, 256)
         self.up3 = segnetUp3(256, 128)
         self.up2 = segnetUp2(128, 64)
-        self.up1_first_head = segnetUp2(64, n_classes)
-        self.up1_second_head = segnetUp2(64, n_classes)
+
+        self.up1_first_head = segnetUp3(64, 32)
+        self.up1_second_head = segnetUp3(64, 32)
+        self.conv2d_first_head = conv2D(32, n_classes, 3, 1, 1)
+        self.conv2d_second_head = conv2D(32, n_classes, 3, 1, 1)
 
     def forward(self, inputs):
 
@@ -35,8 +39,11 @@ class segnet_two_heads(nn.Module):
         up4 = self.up4(up5, indices_4, unpool_shape4)
         up3 = self.up3(up4, indices_3, unpool_shape3)
         up2 = self.up2(up3, indices_2, unpool_shape2)
+
         up1_first_head = self.up1_first_head(up2, indices_1, unpool_shape1)
         up1_second_head = self.up1_second_head(up2, indices_1, unpool_shape1)
+        up1_first_head = self.conv2d_first_head(up1_first_head)
+        up1_second_head = self.conv2d_second_head(up1_second_head)
 
         return up1_first_head, up1_second_head
 

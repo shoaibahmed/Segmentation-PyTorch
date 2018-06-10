@@ -14,6 +14,7 @@ from torch.utils import data
 import cv2
 
 ASPECT_AWARE_SCALING = True
+TWO_HEADS = True
 
 def get_data_path(name):
     """Extract path to data from config file.
@@ -87,16 +88,22 @@ class TableStrLoaderTwoHeads(data.Dataset):
         lbl_row = np.array(lbl_row, dtype=np.uint8)
         lbl_col = m.imread(lbl_path_col, cv2.IMREAD_GRAYSCALE)
         lbl_col = np.array(lbl_col, dtype=np.uint8)
-        lbl = np.zeros((lbl_row.shape[0], lbl_row.shape[1]), dtype=lbl_row.dtype)
-        lbl = np.stack((lbl_row, lbl_col, lbl), axis=2)
+        if TWO_HEADS:
+            lbl = np.zeros((lbl_row.shape[0], lbl_row.shape[1]), dtype=lbl_row.dtype)
+            lbl = np.stack((lbl_row, lbl_col, lbl), axis=2)
+        else:
+            lbl = lbl_row
         # print ("Before:", im.shape, lbl.shape)
 
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
         if self.is_transform:
             im, lbl = self.transform(im, lbl)
-        lbl = lbl[:-1, :, :] # Discard the 3rd dimension
+
+        if TWO_HEADS:
+            lbl = lbl[:-1, :, :] # Discard the 3rd dimension
         # print ("Data shape:", im.size(), lbl.size())
+
         return im, lbl
 
 
@@ -136,9 +143,13 @@ class TableStrLoaderTwoHeads(data.Dataset):
                 # lbl = m.imresize(lbl, (self.img_size[0], self.img_size[1]), 'nearest', 'F')
                 lbl = cv2.resize(lbl, (self.img_size[0], self.img_size[1]), interpolation=cv2.INTER_NEAREST) # uint8 with RGB mode
         lbl = lbl.astype(int)
-        # NHWC -> NCHW
-        lbl = lbl.transpose(2, 0, 1)
-        # print (np.unique(lbl))
+
+        if TWO_HEADS:
+            # NHWC -> NCHW
+            lbl = lbl.transpose(2, 0, 1)
+            # print ("First channel:", np.unique(lbl[0, :, :]))
+            # print ("Second channel:", np.unique(lbl[1, :, :]))
+
         img = torch.from_numpy(img).float()
         lbl = torch.from_numpy(lbl).long()
         return img, lbl
@@ -264,24 +275,34 @@ class TableStrLoaderTwoHeads(data.Dataset):
         # assert expected == 9733, 'unexpected dataset sizes'
 
 # Leave code for debugging purposes
-# import ptsemseg.augmentations as aug
-# if __name__ == '__main__':
-#     local_path = '/netscratch/siddiqui/TableDetection/icdar_str_devkit/data/'
-#     bs = 4
-#     augs = aug.Compose([aug.RandomRotate(10), aug.RandomHorizontallyFlip()])
-#     dst = pascalVOCLoader(root=local_path, is_transform=True, augmentations=augs)
-#     trainloader = data.DataLoader(dst, batch_size=bs)
-#     for i, data in enumerate(trainloader):
-#         imgs, labels = data
-#         imgs = imgs.numpy()[:, ::-1, :, :]
-#         imgs = np.transpose(imgs, [0,2,3,1])
-#         f, axarr = plt.subplots(bs, 2)
-#         for j in range(bs):
-#             axarr[j][0].imshow(imgs[j])
-#             axarr[j][1].imshow(dst.decode_segmap(labels.numpy()[j]))
-#         plt.show()
-#         a = raw_input()
-#         if a == 'ex':
-#             break
-#         else:
-#             plt.close()
+import ptsemseg.augmentations as aug
+if __name__ == '__main__':
+    local_path = '/netscratch/siddiqui/TableDetection/icdar_str_devkit/data/'
+    bs = 1
+    # augs = aug.Compose([aug.RandomRotate(10), aug.RandomHorizontallyFlip()])
+    augs = aug.Compose([aug.RandomHorizontallyFlip()])
+    dst = TableStrLoaderTwoHeads(root=local_path, is_transform=True, augmentations=augs)
+    trainloader = data.DataLoader(dst, batch_size=bs)
+    for i, data in enumerate(trainloader):
+        imgs, labels = data
+        imgs = imgs.numpy()[:, ::-1, :, :]
+        imgs = np.transpose(imgs, [0,2,3,1])
+        if TWO_HEADS:
+            labels = np.transpose(labels, [0,2,3,1])
+        f, axarr = plt.subplots(bs, 3 if TWO_HEADS else 2, squeeze=False)
+        for j in range(bs):
+            axarr[j][0].imshow(imgs[j])
+            if TWO_HEADS:
+                axarr[j][1].imshow(dst.decode_segmap(labels[j, :, :, 0].numpy()))
+                axarr[j][2].imshow(dst.decode_segmap(labels[j, :, :, 1].numpy()))
+            else:
+                axarr[j][1].imshow(dst.decode_segmap(labels.numpy()[j]))
+            
+        # plt.show()
+        plt.savefig("./out.png")
+        print ("Waiting for input now!")
+        a = input()
+        if a == 'ex':
+            break
+        else:
+            plt.close()
